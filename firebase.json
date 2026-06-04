@@ -1,0 +1,7 @@
+{
+  "apphosting": {
+    "backendId": "pico-yoyaku",
+    "rootDir": "./",
+    "alwaysDeployFromSource": true
+  }
+}
