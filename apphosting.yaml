@@ -1,0 +1,13 @@
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyDOLbYKS84HB7C1h4ySLvvQF3ET-Xdli9s"
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "studio-4866279312-20f76.firebaseapp.com"
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "studio-4866279312-20f76"
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "studio-4866279312-20f76.firebasestorage.app"
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "329743428077"
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:329743428077:web:441201ca4db4ac89631fe4"

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -57,8 +58,10 @@ const getDummyReservations = () => {
 
 const DUMMY_RESERVATIONS = getDummyReservations();
 
-export default function Home() {
+function HomeContent() {
+  const searchParams = useSearchParams();
   const [isClient, setIsClient] = useState(false);
+  const [isAuthError, setIsAuthError] = useState(false);
 
   const [activeUser, setActiveUser] = useState<{id: string|number, name: string} | null>(null);
   const [familyMembers, setFamilyMembers] = useState<{id: string|number, name: string}[]>([]);
@@ -69,7 +72,6 @@ export default function Home() {
     
     const initializeData = async () => {
       // 1. URLパラメータの取得
-      const searchParams = new URLSearchParams(window.location.search);
       const urlChildId = searchParams.get('childId');
       const urlLinkedIdsStr = searchParams.get('linkedIds');
       
@@ -125,11 +127,14 @@ export default function Home() {
         } catch (e) {
           console.error("Failed to fetch family members:", e);
         }
+      } else {
+        // パラメーターがなく、ローカルストレージにも履歴がない場合の安全ガード
+        setIsAuthError(true);
       }
     };
     
     initializeData();
-  }, []);
+  }, [searchParams]);
 
   // モックのユーザー・施設情報（将来的にはPropsやContextから取得する）
   // 施設側で選択中の施設と確実に連携できるよう、localStorageから取得
@@ -704,6 +709,20 @@ export default function Home() {
       localStorage.setItem('pico_change_history', JSON.stringify(history));
     } catch (e) {}
   };
+
+  if (isAuthError) {
+    return (
+      <div className="flex justify-center min-h-screen bg-zinc-100">
+        <div className="w-full max-w-[420px] bg-[#A1DDF0] min-h-screen flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl p-6 text-center shadow-lg w-full max-w-sm">
+            <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <p className="text-gray-700 font-bold mb-2">パラメーターエラー</p>
+            <p className="text-gray-500 text-sm">Pico！連絡帳から再度アクセスしてください。</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isClient || !activeUser) {
     return <div className="flex justify-center min-h-screen bg-zinc-100"><div className="w-full max-w-[420px] bg-[#A1DDF0] min-h-screen" /></div>;
@@ -1814,5 +1833,13 @@ export default function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex justify-center min-h-screen bg-zinc-100"><div className="w-full max-w-[420px] bg-[#A1DDF0] min-h-screen" /></div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
