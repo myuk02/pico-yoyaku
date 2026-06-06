@@ -737,7 +737,7 @@ function HomeContent() {
         <div className="bg-[#A1DDF0] pt-6 pb-5 px-6 flex items-center justify-center relative">
           
           <a
-            href={`https://pico-app--studio-4866279312-20f76.asia-east1.hosted.app/parent?id=${activeUser.id}`}
+            href="https://example.com/pico-contact"
             target="_blank"
             rel="noopener noreferrer"
             className="absolute left-5 bottom-3 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-full transition-colors z-20 shadow-sm"
