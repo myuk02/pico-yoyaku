@@ -589,6 +589,7 @@ export default function StaffHome() {
             <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden">
               
               {historyData
+                .filter(h => users.some(u => u.id.toString() === h.userId?.toString()))
                 .filter(h => historyFilter === "全て表示" ? true : h.status === '未確認')
                 .length === 0 ? (
                   <div className="p-6 text-center text-[13px] text-gray-500 font-medium">
@@ -596,6 +597,7 @@ export default function StaffHome() {
                   </div>
                 ) : (
                   historyData
+                    .filter(h => users.some(u => u.id.toString() === h.userId?.toString()))
                     .filter(h => historyFilter === "全て表示" ? true : h.status === '未確認')
                     .map((item) => (
                       <div key={item.id}>

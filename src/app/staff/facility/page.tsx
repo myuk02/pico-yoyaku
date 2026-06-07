@@ -31,7 +31,7 @@ import {
   TriangleAlert,
   Lock
 } from "lucide-react";
-import { collection, getDocs, doc, deleteDoc, query, where, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, deleteDoc, query, where, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const FACILITY_MAP: Record<string, string> = {
@@ -386,21 +386,47 @@ export default function FacilitySettings() {
     setUserInfoDays(String(val + 1));
   };
 
-  const handleSaveUserInfo = () => {
+  const handleSaveUserInfo = async () => {
     if (userInfoSelectedId === null) return;
+    const newDays = parseInt(userInfoDays, 10) || 0;
+    
+    // UI 即時反映
     setUsers(prev => prev.map(u => 
       u.id === userInfoSelectedId 
-        ? { ...u, name: userInfoName, days: parseInt(userInfoDays, 10) || 0 }
+        ? { ...u, name: userInfoName, days: newDays }
         : u
     ));
+    
+    // Firestore更新
+    try {
+      await updateDoc(doc(db, "children", userInfoSelectedId.toString()), {
+        name: userInfoName,
+        days: newDays
+      });
+    } catch(e) {
+      console.error("Error updating user info:", e);
+    }
+    
     setIsUserInfoModalOpen(false);
   };
 
-  const handleRestoreUser = () => {
+  const handleRestoreUser = async () => {
     if (userInfoSelectedId === null) return;
+    
+    // UI 即時反映
     setUsers(prev => prev.map(u => 
       u.id === userInfoSelectedId ? { ...u, isHidden: false } : u
     ));
+    
+    // Firestore更新
+    try {
+      await updateDoc(doc(db, "children", userInfoSelectedId.toString()), {
+        isHidden: false
+      });
+    } catch(e) {
+      console.error("Error restoring user:", e);
+    }
+    
     setIsUserInfoModalOpen(false);
   };
 
