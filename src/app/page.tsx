@@ -544,16 +544,218 @@ function HomeContent() {
       message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を削除しました`;
     }
 
-    history.unshift({
-      id: Math.random().toString(36).substring(2, 9),
-      action: actionType,
-      message,
-      timestamp: newTimestamp,
-      status: '未確認',
-      userId: activeUser.id,
-      targetMonth: targetMonthStr,
-      count: bulkCount
+  const [locationTab, setLocationTab] = useState<'pickup' | 'dropoff'>('pickup');
+  const [isSubLocationModalOpen, setIsSubLocationModalOpen] = useState(false);
+  const [subLocationForm, setSubLocationForm] = useState({ name: '', address: '' });
+  const [activeEditIndex, setActiveEditIndex] = useState<number | null>(null);
+
+
+  // --- Copy Modal State ---
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [copySelectedDates, setCopySelectedDates] = useState<Date[]>([]);
+  const [copyCalendarDate, setCopyCalendarDate] = useState(new Date());
+
+  const [formData, setFormData] = useState({
+    pickupTime: "15:30",
+    pickupPlace: "〇〇小学校前",
+    isPickupTimeUndecided: false,
+    dropoffTime: "17:30",
+    dropoffPlace: "自宅",
+    isDropoffTimeUndecided: false
+  });
+  const [isPickupDropdownOpen, setIsPickupDropdownOpen] = useState(false);
+  const [isDropoffDropdownOpen, setIsDropoffDropdownOpen] = useState(false);
+  const [isPickupTimeDropdownOpen, setIsPickupTimeDropdownOpen] = useState(false);
+  const [isDropoffTimeDropdownOpen, setIsDropoffTimeDropdownOpen] = useState(false);
+
+  const pickupTimeSelectedRef = useRef<HTMLButtonElement>(null);
+  const dropoffTimeSelectedRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isPickupTimeDropdownOpen && pickupTimeSelectedRef.current) {
+      setTimeout(() => {
+        pickupTimeSelectedRef.current?.scrollIntoView({ block: 'center' });
+      }, 0);
+    }
+  }, [isPickupTimeDropdownOpen]);
+
+  useEffect(() => {
+    if (isDropoffTimeDropdownOpen && dropoffTimeSelectedRef.current) {
+      setTimeout(() => {
+        dropoffTimeSelectedRef.current?.scrollIntoView({ block: 'center' });
+      }, 0);
+    }
+  }, [isDropoffTimeDropdownOpen]);
+
+  const timeOptions = useMemo(() => {
+    const options = [];
+    for (let h = 8; h <= 18; h++) {
+      for (let m = 0; m < 60; m += 5) {
+        if (h === 18 && m > 30) break;
+        options.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+      }
+    }
+    return options;
+  }, []);
+
+  const syncLocationsToStorage = async (type: 'pickup' | 'dropoff', action: 'add' | 'edit' | 'delete', idx: number | null, newName: string, newAddress: string = '未指定') => {
+    if (!activeUser) return;
+    try {
+      const arr = type === 'pickup' ? [...fullLocations.pickup] : [...fullLocations.dropoff];
+      
+      if (action === 'add') {
+        arr.push({ id: Date.now().toString(), name: newName, address: newAddress || "未指定" });
+      } else if (action === 'edit' && idx !== null) {
+        if (arr[idx]) {
+          arr[idx].name = newName;
+          arr[idx].address = newAddress || "未指定";
+        }
+      } else if (action === 'delete' && idx !== null) {
+        arr.splice(idx, 1);
+      }
+      
+      const docRef = doc(db, "children", activeUser.id.toString());
+      const updateField = type === 'pickup' ? "pickupLocation" : "dropoffLocation";
+      await setDoc(docRef, { [updateField]: arr }, { merge: true });
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const deletePickupLocation = (idx: number) => {
+    const deletedVal = pickupLocations[idx];
+    const updated = pickupLocations.filter((_, i) => i !== idx);
+    setPickupLocations(updated);
+    syncLocationsToStorage('pickup', 'delete', idx, "", "");
+    
+    if (formData.pickupPlace === deletedVal) {
+      setFormData(prev => ({ ...prev, pickupPlace: updated[0] || "" }));
+    }
+  };
+
+  const deleteDropoffLocation = (idx: number) => {
+    const deletedVal = dropoffLocations[idx];
+    const updated = dropoffLocations.filter((_, i) => i !== idx);
+    setDropoffLocations(updated);
+    syncLocationsToStorage('dropoff', 'delete', idx, "", "");
+    
+    if (formData.dropoffPlace === deletedVal) {
+      setFormData(prev => ({ ...prev, dropoffPlace: updated[0] || "" }));
+    }
+  };
+
+  // --- Calendar Logic ---
+  const isFacilityHoliday = (d: Date) => {
+    const dayOfWeek = d.getDay();
+    const isNationalHoliday = JapaneseHolidays.isHoliday(d);
+    
+    // Parse saved YYYY-MM-DD strings and compare numeric components for exact matching
+    const isSpecificDate = facilityHolidays.specificDates.some(savedDate => {
+      const [y, m, dNum] = savedDate.split('-');
+      return parseInt(y, 10) === d.getFullYear() && 
+             parseInt(m, 10) === d.getMonth() + 1 && 
+             parseInt(dNum, 10) === d.getDate();
     });
+
+    return isSpecificDate || facilityHolidays.regularDays.includes(dayOfWeek) || (facilityHolidays.regularDays.includes(7) && Boolean(isNationalHoliday));
+  };
+
+  const calculateDeadlineDate = (targetDate: Date, deadlineDays: number): Date => {
+    let current = new Date(targetDate);
+    let businessDaysCount = 1;
+    
+    while (businessDaysCount < deadlineDays) {
+      current.setDate(current.getDate() - 1);
+      if (!isFacilityHoliday(current)) {
+        businessDaysCount++;
+      }
+    }
+    current.setHours(23, 59, 59, 999);
+    return current;
+  };
+
+  const isPastDeadline = (targetDate: Date) => {
+    const deadline = calculateDeadlineDate(targetDate, reservationDeadline);
+    return new Date() > deadline;
+  };
+
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart, { weekStartsOn: 0 }); // Sunday start
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+
+  // Find reservation for selected date
+  const selectedReservation = reservations.find(res => isSameDay(res.date, selectedDate));
+
+  const addHistoryWithAggregation = (history: any[], newDate: Date, actionType: 'create' | 'edit' | 'delete', bulkCount: number = 1) => {
+    if (!activeUser) return;
+    const now = new Date();
+    const targetMonthStr = format(newDate, 'yyyy-MM');
+    const newTimestamp = now.toISOString();
+
+    if (actionType === 'create') {
+      const lastHistory = history[0];
+      if (lastHistory) {
+        const lastTime = new Date(lastHistory.timestamp).getTime();
+        const diffMinutes = (now.getTime() - lastTime) / (1000 * 60);
+
+        if (
+          lastHistory.userId === activeUser.id &&
+          (lastHistory.action === 'create' || lastHistory.action === 'create_bulk') &&
+          lastHistory.targetMonth === targetMonthStr &&
+          diffMinutes <= 15 &&
+          lastHistory.status === '未確認'
+        ) {
+          // Merge
+          const newCount = (lastHistory.count || 1) + bulkCount;
+          lastHistory.count = newCount;
+          lastHistory.timestamp = newTimestamp;
+          lastHistory.action = 'create';
+          if (newCount >= 2) {
+            lastHistory.message = `${activeUser.name}さんが${format(newDate, 'M月')}のカレンダーに${newCount}件の新規予約をしました`;
+          } else {
+            lastHistory.message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}に新規予約をしました`;
+          }
+          return;
+        }
+      }
+    }
+
+    // Otherwise, push new
+    let message = "";
+    if (actionType === 'create') {
+      if (bulkCount >= 2) {
+        message = `${activeUser.name}さんが${format(newDate, 'M月')}のカレンダーに${bulkCount}件の新規予約をしました`;
+      } else {
+        message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}に新規予約をしました`;
+      }
+    } else if (actionType === 'edit') {
+      message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を変更しました`;
+    } else if (actionType === 'delete') {
+      message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を削除しました`;
+    }
+
+try {
+      // 施設ごとの changeHistory コレクションに保存
+      const historyRef = doc(collection(db, "facilities", currentFacilityId, "changeHistory"));
+      await setDoc(historyRef, {
+        id: historyRef.id,
+        action: actionType,
+        message: message,
+        timestamp: new Date().toISOString(),
+        status: '未確認',
+        userId: activeUser.id.toString(),
+        targetMonth: format(newDate, 'yyyy-MM'),
+        count: bulkCount,
+        facilityId: currentFacilityId
+      });
+    } catch (e) {
+      console.error("Firestoreへの履歴保存に失敗しました", e);
+    }
   };
 
   const handleSave = async () => {
@@ -603,6 +805,7 @@ function HomeContent() {
           addHistoryWithAggregation(history, selectedDate, 'edit');
           localStorage.setItem('pico_change_history', JSON.stringify(history));
         } catch (e) {}
+        saveHistoryToFirestore(selectedDate, 'edit');
       }
     } else {
       try {
@@ -610,6 +813,7 @@ function HomeContent() {
         addHistoryWithAggregation(history, selectedDate, 'create');
         localStorage.setItem('pico_change_history', JSON.stringify(history));
       } catch (e) {}
+      saveHistoryToFirestore(selectedDate, 'create');
     }
     setIsModalOpen(false);
   };
@@ -633,81 +837,18 @@ function HomeContent() {
         }
       }
 
-      if (selectedReservation?.status === 'confirmed') {
-        try {
-          const history = JSON.parse(localStorage.getItem('pico_change_history') || '[]');
-          addHistoryWithAggregation(history, selectedDate, 'delete');
-          localStorage.setItem('pico_change_history', JSON.stringify(history));
-        } catch (e) {}
-      }
+      try {
+        const history = JSON.parse(localStorage.getItem('pico_change_history') || '[]');
+        addHistoryWithAggregation(history, selectedDate, 'delete');
+        localStorage.setItem('pico_change_history', JSON.stringify(history));
+      } catch (e) {}
+      saveHistoryToFirestore(selectedDate, 'delete');
     }
-  };
-
-  // --- Bulk Copy Logic ---
-  const copyMonthStart = startOfMonth(copyCalendarDate);
-  const copyMonthEnd = endOfMonth(copyMonthStart);
-  const copyStartDate = startOfWeek(copyMonthStart, { weekStartsOn: 0 }); // Sunday start
-  const copyEndDate = endOfWeek(copyMonthEnd, { weekStartsOn: 0 });
-  const copyCalendarDays = eachDayOfInterval({ start: copyStartDate, end: copyEndDate });
-
-  const nextCopyMonth = () => setCopyCalendarDate(addMonths(copyCalendarDate, 1));
-  const prevCopyMonth = () => setCopyCalendarDate(subMonths(copyCalendarDate, 1));
-
-  // Toggle day of week (0=Sun, 1=Mon, ..., 5=Fri, 6=Sat)
-  const toggleDayOfWeek = (dayOfWeek: number) => {
-    // Determine the range to apply (current month only)
-    const startRange = startOfMonth(copyCalendarDate);
-    const endRange = endOfMonth(copyCalendarDate);
-    const rangeDays = eachDayOfInterval({ start: startRange, end: endRange });
-    
-    const targetDays = rangeDays.filter(d => d.getDay() === dayOfWeek);
-    
-    const areAllSelected = targetDays.length > 0 && targetDays.every(td => 
-      copySelectedDates.some(selected => isSameDay(selected, td))
-    );
-
-    if (areAllSelected) {
-      // Remove them
-      setCopySelectedDates(prev => prev.filter(p => !targetDays.some(td => isSameDay(p, td))));
-    } else {
-      // Add them
-      setCopySelectedDates(prev => {
-        const newDates = [...prev];
-        targetDays.forEach(td => {
-          if (!newDates.some(selected => isSameDay(selected, td))) {
-            newDates.push(td);
-          }
-        });
-        return newDates;
-      });
-    }
-  };
-
-  const toggleCopyDate = (date: Date) => {
-    setCopySelectedDates(prev => {
-      const exists = prev.some(d => isSameDay(d, date));
-      if (exists) {
-        return prev.filter(d => !isSameDay(d, date));
-      } else {
-        return [...prev, date];
-      }
-    });
   };
 
   const handleBulkCopySave = async () => {
     if (!activeUser) return;
-    const datesToSave = [selectedDate, ...copySelectedDates.filter(d => !isSameDay(d, selectedDate))];
-    
-    const monthsToCheck = Array.from(new Set(datesToSave.map(d => format(d, 'yyyy-MM'))));
-    for (const monthStr of monthsToCheck) {
-      const existingInMonth = reservations.filter(r => format(r.date, 'yyyy-MM') === monthStr);
-      const savingInMonth = datesToSave.filter(d => format(d, 'yyyy-MM') === monthStr);
-      const newDatesCount = savingInMonth.filter(d => !existingInMonth.some(r => isSameDay(r.date, d))).length;
-      if (existingInMonth.length + newDatesCount > maxDaysPerMonth) {
-        setIsLimitAlertOpen(true);
-        return;
-      }
-    }
+    const datesToSave = copySelectedDates;
     
     for (const d of datesToSave) {
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -719,6 +860,7 @@ function HomeContent() {
         userId: activeUser.id.toString(),
         facilityId: currentFacilityId
       };
+      
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await setDoc(docRef, newRes);
 
@@ -746,6 +888,10 @@ function HomeContent() {
       });
       localStorage.setItem('pico_change_history', JSON.stringify(history));
     } catch (e) {}
+    
+    datesToSave.forEach(date => {
+      saveHistoryToFirestore(date, 'create', 1);
+    });
   };
 
   if (isAuthError) {
