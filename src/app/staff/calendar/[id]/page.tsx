@@ -377,7 +377,7 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
       };
       await setDoc(docRef, newBookingObj);
       
-      const isTodayDate = (d) => {
+      const isTodayDate = (d: Date) => {
         const today = new Date();
         return d.getDate() === today.getDate() &&
                d.getMonth() === today.getMonth() &&
@@ -398,7 +398,7 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
     } else {
       await deleteDoc(docRef);
       
-      const isTodayDate = (d) => {
+      const isTodayDate = (d: Date) => {
         const today = new Date();
         return d.getDate() === today.getDate() &&
                d.getMonth() === today.getMonth() &&
