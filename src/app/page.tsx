@@ -582,12 +582,17 @@ function HomeContent() {
     const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
     await setDoc(docRef, newRes);
     
-    if (isToday(selectedDate)) {
-      const childDocRef = doc(db, "children", activeUser.id.toString());
-      await setDoc(childDocRef, {
-        isTodayActive: true,
-        lastAttendanceDate: format(new Date(), 'yyyy-MM-dd')
-      }, { merge: true });
+    const todayYMD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+    if (dateStr === todayYMD) {
+      try {
+        const childDocRef = doc(db, "children", activeUser.id.toString());
+        await setDoc(childDocRef, {
+          isTodayActive: true,
+          lastAttendanceDate: new Date().toLocaleDateString('en-CA')
+        }, { merge: true });
+      } catch (err) {
+        console.error("本日スイッチの連動に失敗しました:", err);
+      }
     }
 
     if (modalMode === 'edit') {
@@ -616,11 +621,16 @@ function HomeContent() {
       await deleteDoc(docRef);
       setIsModalOpen(false);
 
-      if (isToday(selectedDate)) {
-        const childDocRef = doc(db, "children", activeUser.id.toString());
-        await setDoc(childDocRef, {
-          isTodayActive: false
-        }, { merge: true });
+      const todayYMD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+      if (dateStr === todayYMD) {
+        try {
+          const childDocRef = doc(db, "children", activeUser.id.toString());
+          await setDoc(childDocRef, {
+            isTodayActive: false
+          }, { merge: true });
+        } catch (err) {
+          console.error("本日スイッチの連動（OFF）に失敗しました:", err);
+        }
       }
 
       if (selectedReservation?.status === 'confirmed') {
@@ -712,12 +722,17 @@ function HomeContent() {
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await setDoc(docRef, newRes);
 
-      if (isToday(d)) {
-        const childDocRef = doc(db, "children", activeUser.id.toString());
-        await setDoc(childDocRef, {
-          isTodayActive: true,
-          lastAttendanceDate: format(new Date(), 'yyyy-MM-dd')
-        }, { merge: true });
+      const todayYMD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+      if (dateStr === todayYMD) {
+        try {
+          const childDocRef = doc(db, "children", activeUser.id.toString());
+          await setDoc(childDocRef, {
+            isTodayActive: true,
+            lastAttendanceDate: new Date().toLocaleDateString('en-CA')
+          }, { merge: true });
+        } catch (err) {
+          console.error("一括コピー時の本日スイッチ連動に失敗しました:", err);
+        }
       }
     }
 
