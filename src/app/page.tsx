@@ -582,13 +582,14 @@ function HomeContent() {
     const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
     await setDoc(docRef, newRes);
     
-    const todayYMD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-    if (dateStr === todayYMD) {
+    if (isToday(selectedDate)) {
       try {
         const childDocRef = doc(db, "children", activeUser.id.toString());
+        // スマホSafari等でも確実にハイフン区切り(Chrome互換)にするための手動構築
+        const todayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
         await setDoc(childDocRef, {
           isTodayActive: true,
-          lastAttendanceDate: new Date().toLocaleDateString('en-CA')
+          lastAttendanceDate: todayString
         }, { merge: true });
       } catch (err) {
         console.error("本日スイッチの連動に失敗しました:", err);
@@ -621,8 +622,7 @@ function HomeContent() {
       await deleteDoc(docRef);
       setIsModalOpen(false);
 
-      const todayYMD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-      if (dateStr === todayYMD) {
+      if (isToday(selectedDate)) {
         try {
           const childDocRef = doc(db, "children", activeUser.id.toString());
           await setDoc(childDocRef, {
@@ -722,13 +722,13 @@ function HomeContent() {
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await setDoc(docRef, newRes);
 
-      const todayYMD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-      if (dateStr === todayYMD) {
+      if (isToday(d)) {
         try {
           const childDocRef = doc(db, "children", activeUser.id.toString());
+          const todayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
           await setDoc(childDocRef, {
             isTodayActive: true,
-            lastAttendanceDate: new Date().toLocaleDateString('en-CA')
+            lastAttendanceDate: todayString
           }, { merge: true });
         } catch (err) {
           console.error("一括コピー時の本日スイッチ連動に失敗しました:", err);
