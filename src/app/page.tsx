@@ -582,6 +582,14 @@ function HomeContent() {
     const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
     await setDoc(docRef, newRes);
     
+    if (isToday(selectedDate)) {
+      const childDocRef = doc(db, "children", activeUser.id.toString());
+      await setDoc(childDocRef, {
+        isTodayActive: true,
+        lastAttendanceDate: format(new Date(), 'yyyy-MM-dd')
+      }, { merge: true });
+    }
+
     if (modalMode === 'edit') {
       if (selectedReservation?.status === 'confirmed') {
         try {
@@ -607,6 +615,13 @@ function HomeContent() {
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await deleteDoc(docRef);
       setIsModalOpen(false);
+
+      if (isToday(selectedDate)) {
+        const childDocRef = doc(db, "children", activeUser.id.toString());
+        await setDoc(childDocRef, {
+          isTodayActive: false
+        }, { merge: true });
+      }
 
       if (selectedReservation?.status === 'confirmed') {
         try {
@@ -696,6 +711,14 @@ function HomeContent() {
       };
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await setDoc(docRef, newRes);
+
+      if (isToday(d)) {
+        const childDocRef = doc(db, "children", activeUser.id.toString());
+        await setDoc(childDocRef, {
+          isTodayActive: true,
+          lastAttendanceDate: format(new Date(), 'yyyy-MM-dd')
+        }, { merge: true });
+      }
     }
 
     setIsCopyModalOpen(false);
