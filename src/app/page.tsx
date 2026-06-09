@@ -63,8 +63,8 @@ function HomeContent() {
   const [isClient, setIsClient] = useState(false);
   const [isAuthError, setIsAuthError] = useState(false);
 
-  const [activeUser, setActiveUser] = useState<{id: string|number, name: string} | null>(null);
-  const [familyMembers, setFamilyMembers] = useState<{id: string|number, name: string}[]>([]);
+  const [activeUser, setActiveUser] = useState<{id: string|number, name: string, facilityId?: string} | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<{id: string|number, name: string, facilityId?: string}[]>([]);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -101,7 +101,8 @@ function HomeContent() {
           const snap = await getDocs(q);
           const members = snap.docs.map(d => ({
             id: d.id,
-            name: d.data().name || "名称未設定"
+            name: d.data().name || "名称未設定",
+              facilityId: d.data().facilityId
           }));
           
           if (members.length > 0) {
@@ -137,28 +138,9 @@ function HomeContent() {
   }, [searchParams]);
 
   // モックのユーザー・施設情報（将来的にはPropsやContextから取得する）
-  // 施設側で選択中の施設と確実に連携できるよう、localStorageから取得
-  const [currentFacilityId, setCurrentFacilityId] = useState("facility-1774355827269");
+  // 対象の施設IDは、現在画面に読み込まれている「児童のデータ」から動的に取得する
+  const currentFacilityId = activeUser?.facilityId;
 
-  useEffect(() => {
-    const storedFacility = localStorage.getItem('pico_selected_facility');
-    const FACILITY_MAP: Record<string, string> = {
-      "葭津": "facility-1773884904073",
-      "渡": "facility-1773884917420",
-      "大篠津": "facility-1773884944675",
-      "湯梨浜": "facility-1773884954458",
-      "テスト用": "facility-1774355827269",
-    };
-    const storedFacilityId = localStorage.getItem('pico_selected_facility_id');
-    if (storedFacilityId) {
-      setCurrentFacilityId(storedFacilityId);
-    } else if (storedFacility && FACILITY_MAP[storedFacility]) {
-      setCurrentFacilityId(FACILITY_MAP[storedFacility]);
-    } else {
-      // 異なるブラウザでテストする場合も考慮し、デフォルトを「テスト用」とする
-      setCurrentFacilityId("facility-1774355827269");
-    }
-  }, []);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -302,7 +284,7 @@ function HomeContent() {
 
   // お知らせのフェッチと未読計算
   useEffect(() => {
-    if (!isInitialized || !activeUser?.id) return;
+    if (!isInitialized || !activeUser?.id || !currentFacilityId) return;
     
     const q = query(collection(db, "announcements"), where("facilityId", "==", currentFacilityId));
     const unsub = onSnapshot(q, (snap) => {
@@ -597,7 +579,7 @@ function HomeContent() {
 };
 
   const saveHistoryToFirestore = async (newDate: Date, actionType: 'create' | 'edit' | 'delete', bulkCount: number = 1) => {
-    if (!activeUser) return;
+    if (!activeUser || !currentFacilityId) return;
     let message = "";
     if (actionType === 'create') {
       if (bulkCount >= 2) {
@@ -631,7 +613,7 @@ function HomeContent() {
 
 
   const handleSave = async () => {
-    if (!activeUser) return;
+    if (!activeUser || !currentFacilityId) return;
     if (modalMode === 'new') {
       const existingIdx = reservations.findIndex(r => isSameDay(r.date, selectedDate));
       if (existingIdx === -1) {
@@ -719,7 +701,7 @@ function HomeContent() {
   };
 
   const handleBulkCopySave = async () => {
-    if (!activeUser) return;
+    if (!activeUser || !currentFacilityId) return;
     const datesToSave = copySelectedDates;
     
     for (const d of datesToSave) {
@@ -1773,7 +1755,7 @@ function HomeContent() {
                       newMemos[dateKey] = {
                         text: memoInput.trim(),
                         userId: activeUser.id.toString(),
-                        facilityId: currentFacilityId
+                        facilityId: currentFacilityId || ""
                       };
                     } else {
                       delete newMemos[dateKey];
