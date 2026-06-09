@@ -47,10 +47,6 @@ export default function StaffHome() {
 
   useEffect(() => {
     try {
-      const storedHistory = localStorage.getItem('pico_change_history');
-      if (storedHistory) {
-        setHistoryData(JSON.parse(storedHistory));
-      }
       const storedHolidays = localStorage.getItem("pico_facility_holidays");
       if (storedHolidays) {
         setFacilityHolidays(JSON.parse(storedHolidays));
@@ -103,10 +99,22 @@ export default function StaffHome() {
     return isSpecificDate || facilityHolidays.regularDays.includes(dayOfWeek) || (facilityHolidays.regularDays.includes(7) && Boolean(isNationalHoliday));
   };
 
-  const toggleHistoryItem = (id: string | number) => {
+  const toggleHistoryItem = async (id: string | number) => {
+    const facilityId = facilityMapState[selectedFacility] || facilityMapState["葭津"] || FACILITY_MAP["葭津"];
+    const item = historyData.find(h => h.id === id);
+    if (!item) return;
+    
+    // オプティミスティックUI更新
     const newData = historyData.map(h => h.id === id ? { ...h, status: h.status === '未確認' ? '確認済' : '未確認' } : h);
     setHistoryData(newData);
-    localStorage.setItem('pico_change_history', JSON.stringify(newData));
+    
+    try {
+      const newStatus = item.status === '未確認' ? '確認済' : '未確認';
+      const docRef = doc(db, "facilities", facilityId, "changeHistory", String(id));
+      await updateDoc(docRef, { status: newStatus });
+    } catch (err) {
+      console.error("履歴ステータスの更新に失敗しました:", err);
+    }
   };
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -134,6 +142,24 @@ export default function StaffHome() {
       setUsers(fetched);
     });
     return () => unsubUsers();
+  }, [selectedFacility, isClient, facilityMapState]);
+
+  // Firestoreから履歴をリアルタイム取得
+  useEffect(() => {
+    if (!isClient) return;
+    const facilityId = facilityMapState[selectedFacility] || facilityMapState["葭津"] || FACILITY_MAP["葭津"];
+    const qHistory = query(collection(db, "facilities", facilityId, "changeHistory"));
+    const unsubHistory = onSnapshot(qHistory, (snap) => {
+      const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // ソート: timestampの降順（新しい順）
+      fetched.sort((a: any, b: any) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return timeB - timeA;
+      });
+      setHistoryData(fetched);
+    });
+    return () => unsubHistory();
   }, [selectedFacility, isClient, facilityMapState]);
 
   useEffect(() => {
