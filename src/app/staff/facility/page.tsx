@@ -919,7 +919,7 @@ export default function FacilitySettings() {
                   <div key={idx} className="flex justify-between items-center py-4 border-b border-dashed border-gray-400 group">
                     <div className="flex flex-col gap-1 pl-2">
                       <span className="text-[16px] font-bold text-gray-800 tracking-wide">{loc.name}</span>
-                      <span className="text-[12px] text-gray-400 font-medium">住所：{loc.address}</span>
+                      <span className="text-[12px] text-gray-400 font-medium hidden">住所：{loc.address}</span>
                     </div>
                     <button className="w-9 h-9 rounded-full flex items-center justify-center text-gray-300 hover:bg-rose-50 hover:text-rose-500 transition-colors active:scale-95 mr-1">
                       <Trash2 size={18} />
@@ -970,7 +970,8 @@ export default function FacilitySettings() {
                 </span>
               </div>
 
-              <div className="flex flex-col gap-2 relative">
+              {/* 住所入力は非表示化 */}
+              <div className="flex flex-col gap-2 relative hidden">
                 <label className="text-[14px] font-bold text-gray-700">
                   住所<span className="text-[12px] text-gray-400 ml-1">（任意）</span>
                 </label>
@@ -1282,15 +1283,15 @@ export default function FacilitySettings() {
               >
                 閉じる
               </button>
-              <a 
-                href="https://example.com/pico-contact"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setIsContactModalOpen(false)}
+              <button 
+                onClick={() => {
+                  setIsContactModalOpen(false);
+                  window.location.href = "https://pico-app--studio-4866279312-20f76.asia-east1.hosted.app";
+                }}
                 className="flex-1 bg-[#3DB2D3] hover:bg-[#329ab8] text-white py-3.5 rounded-full font-bold text-[15px] shadow-[0_4px_12px_rgba(61,178,211,0.25)] transition-all flex items-center justify-center"
               >
                 OK（進む）
-              </a>
+              </button>
             </div>
           </div>
         </div>

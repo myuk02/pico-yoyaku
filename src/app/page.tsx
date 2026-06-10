@@ -28,7 +28,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterv
 import { ja } from "date-fns/locale";
 import * as JapaneseHolidays from "japanese-holidays";
 import usagiIcon from "../../public/usagi_icon.png";
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, documentId, getDocs } from "firebase/firestore";
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, documentId, getDocs, updateDoc } from "firebase/firestore";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import { app, db } from "@/lib/firebase";
 
@@ -580,32 +580,77 @@ function HomeContent() {
 
   const saveHistoryToFirestore = async (newDate: Date, actionType: 'create' | 'edit' | 'delete', bulkCount: number = 1) => {
     if (!activeUser || !currentFacilityId) return;
-    let message = "";
-    if (actionType === 'create') {
-      if (bulkCount >= 2) {
-        message = `${activeUser.name}さんが${format(newDate, 'M月')}のカレンダーに${bulkCount}件の新規予約をしました`;
-      } else {
-        message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}に新規予約をしました`;
-      }
-    } else if (actionType === 'edit') {
-      message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を変更しました`;
-    } else if (actionType === 'delete') {
-      message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を削除しました`;
-    }
-
+    
     try {
-      const historyRef = doc(collection(db, "facilities", currentFacilityId, "changeHistory"));
-      await setDoc(historyRef, {
-        id: historyRef.id,
-        action: actionType,
-        message: message,
-        timestamp: new Date().toISOString(),
-        status: '未確認',
-        userId: activeUser.id.toString(),
-        targetMonth: format(newDate, 'yyyy-MM'),
-        count: bulkCount,
-        facilityId: currentFacilityId
-      });
+      const now = new Date();
+      const targetMonthStr = format(newDate, 'yyyy-MM');
+      let aggregatedCount = bulkCount;
+      let existingDocId = null;
+
+      // 15分以内の同一アクション集約チェック
+      if (actionType === 'create') {
+        const q = query(
+          collection(db, "facilities", currentFacilityId, "changeHistory"),
+          where("userId", "==", activeUser.id.toString())
+        );
+        const snap = await getDocs(q);
+        
+        let latestTime = 0;
+        let latestDocData: any = null;
+        
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if (data.action === 'create' && data.targetMonth === targetMonthStr && data.status === '未確認') {
+            const t = new Date(data.timestamp).getTime();
+            if (t > latestTime) {
+              latestTime = t;
+              latestDocData = { id: d.id, ...data };
+            }
+          }
+        });
+
+        // 15分以内なら集約
+        if (latestDocData && (now.getTime() - latestTime) <= 15 * 60 * 1000) {
+          existingDocId = latestDocData.id;
+          aggregatedCount = (latestDocData.count || 1) + bulkCount;
+        }
+      }
+
+      // メッセージ構築
+      let message = "";
+      if (actionType === 'create') {
+        if (aggregatedCount >= 2) {
+          message = `${activeUser.name}さんが${format(newDate, 'M月')}のカレンダーに${aggregatedCount}件の新規予約をしました`;
+        } else {
+          message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}に新規予約をしました`;
+        }
+      } else if (actionType === 'edit') {
+        message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を変更しました`;
+      } else if (actionType === 'delete') {
+        message = `${activeUser.name}さんが${format(newDate, 'M月d日(E)', { locale: ja })}の予約を削除しました`;
+      }
+
+      // 更新 or 新規作成
+      if (existingDocId) {
+        await updateDoc(doc(db, "facilities", currentFacilityId, "changeHistory", existingDocId), {
+          count: aggregatedCount,
+          message: message,
+          timestamp: now.toISOString()
+        });
+      } else {
+        const historyRef = doc(collection(db, "facilities", currentFacilityId, "changeHistory"));
+        await setDoc(historyRef, {
+          id: historyRef.id,
+          action: actionType,
+          message: message,
+          timestamp: now.toISOString(),
+          status: '未確認',
+          userId: activeUser.id.toString(),
+          targetMonth: targetMonthStr,
+          count: aggregatedCount,
+          facilityId: currentFacilityId
+        });
+      }
     } catch (e) {
       console.error("Firestoreへの履歴保存に失敗しました", e);
     }
@@ -638,19 +683,7 @@ function HomeContent() {
     const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
     await setDoc(docRef, newRes);
     
-    if (isToday(selectedDate)) {
-      try {
-        const childDocRef = doc(db, "children", activeUser.id.toString());
-        // スマホSafari等でも確実にハイフン区切り(Chrome互換)にするための手動構築
-        const todayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-        await setDoc(childDocRef, {
-          isTodayActive: true,
-          lastAttendanceDate: todayString
-        }, { merge: true });
-      } catch (err) {
-        console.error("本日スイッチの連動に失敗しました:", err);
-      }
-    }
+
 
     if (modalMode === 'edit') {
       if (selectedReservation?.status === 'confirmed') {
@@ -675,28 +708,27 @@ function HomeContent() {
   const handleDelete = async () => {
     if (!activeUser) return;
     if (window.confirm("本当に削除しますか？")) {
+      // 削除前にステータスを取得しておく
+      const existingIdx = reservations.findIndex(r => isSameDay(r.date, selectedDate));
+      const existingStatus = existingIdx !== -1 ? reservations[existingIdx].status : null;
+
       const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await deleteDoc(docRef);
       setIsModalOpen(false);
 
-      if (isToday(selectedDate)) {
-        try {
-          const childDocRef = doc(db, "children", activeUser.id.toString());
-          await setDoc(childDocRef, {
-            isTodayActive: false
-          }, { merge: true });
-        } catch (err) {
-          console.error("本日スイッチの連動（OFF）に失敗しました:", err);
-        }
-      }
+
 
       try {
         const history = JSON.parse(localStorage.getItem('pico_change_history') || '[]');
         addHistoryWithAggregation(history, selectedDate, 'delete');
         localStorage.setItem('pico_change_history', JSON.stringify(history));
       } catch (e) {}
-      await saveHistoryToFirestore(selectedDate, 'delete');
+      
+      // 承認済（confirmed）だった場合のみ履歴に残す
+      if (existingStatus === 'confirmed') {
+        await saveHistoryToFirestore(selectedDate, 'delete');
+      }
     }
   };
 
@@ -717,19 +749,6 @@ function HomeContent() {
       
       const docRef = doc(db, "children", activeUser.id.toString(), "bookings", dateStr);
       await setDoc(docRef, newRes);
-
-      if (isToday(d)) {
-        try {
-          const childDocRef = doc(db, "children", activeUser.id.toString());
-          const todayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-          await setDoc(childDocRef, {
-            isTodayActive: true,
-            lastAttendanceDate: todayString
-          }, { merge: true });
-        } catch (err) {
-          console.error("一括コピー時の本日スイッチ連動に失敗しました:", err);
-        }
-      }
     }
 
     setIsCopyModalOpen(false);
@@ -743,8 +762,10 @@ function HomeContent() {
       localStorage.setItem('pico_change_history', JSON.stringify(history));
     } catch (e) {}
     
-    for (const date of datesToSave) {
-      await saveHistoryToFirestore(date, 'create', 1);
+    // 一括コピー完了後、1回だけ履歴送信（ルール5復活）
+    if (datesToSave.length > 0) {
+      // 最初の対象日を使って月を判定する（件数をまとめて通知）
+      await saveHistoryToFirestore(datesToSave[0], 'create', datesToSave.length);
     }
   };
 
@@ -763,7 +784,29 @@ function HomeContent() {
   }
 
   if (!isClient || !activeUser) {
-    return <div className="flex justify-center min-h-screen bg-zinc-100"><div className="w-full max-w-[420px] bg-[#A1DDF0] min-h-screen" /></div>;
+    return (
+      <div className="flex justify-center min-h-screen bg-zinc-100">
+        <div className="w-full max-w-[420px] bg-[#A1DDF0] min-h-screen flex flex-col items-center justify-center relative">
+          <style>{`
+            @keyframes gentleFloat {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-10px); }
+            }
+            .animate-gentle-float {
+              animation: gentleFloat 2.5s ease-in-out infinite;
+            }
+          `}</style>
+          <img 
+            src="/pick_icon.png" 
+            alt="Loading" 
+            className="w-28 h-28 mb-6 animate-gentle-float object-contain drop-shadow-md" 
+          />
+          <p className="text-white font-bold tracking-wider text-2xl drop-shadow-sm text-center leading-normal">
+            利用予約へ<br />移動します
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -774,15 +817,16 @@ function HomeContent() {
         {/* Header Section (Outside App Frame) */}
         <div className="bg-[#A1DDF0] pt-6 pb-5 px-6 flex items-center justify-center relative">
           
-          <a
-            href="https://example.com/pico-contact"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => {
+              const childId = searchParams.get('childId') || activeUser.id;
+              window.location.href = `https://pico-app--studio-4866279312-20f76.asia-east1.hosted.app/parent?id=${childId}`;
+            }}
             className="absolute left-5 bottom-3 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-full transition-colors z-20 shadow-sm"
           >
             <Book size={16} className="text-[#76D7A8]" />
             <span className="text-[13px] font-bold">連絡帳</span>
-          </a>
+          </button>
 
           <h1 className="text-xl font-bold text-white tracking-wide flex items-baseline gap-1 relative z-10">
             {activeUser.name} <span className="text-sm font-medium text-white/90">さん</span>
@@ -1542,9 +1586,8 @@ function HomeContent() {
                 <div className="space-y-0">
                   {(locationTab === 'pickup' ? pickupLocations : dropoffLocations).map((loc, idx) => (
                     <div key={idx} className="flex justify-between items-center py-4 border-b border-gray-200 border-dashed group">
-                      <div className="flex flex-col gap-1">
+                      <div className="flex items-center">
                         <span className="text-[15px] font-bold text-gray-800">{loc}</span>
-                        <span className="text-[11px] text-gray-400">住所 : 未指定</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <button 
@@ -1638,30 +1681,7 @@ function HomeContent() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-[13px] font-bold text-gray-800">住所</label>
-                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">任意</span>
-                  </div>
-                  <div className="relative">
-                    <input 
-                      type="text" 
-                      value={subLocationForm.address}
-                      onChange={(e) => {
-                        if (e.target.value.length <= 50) {
-                          setSubLocationForm({ ...subLocationForm, address: e.target.value });
-                        }
-                      }}
-                      placeholder="例 : 未指定"
-                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-[14px] bg-gray-50/50 outline-none focus:border-[#3DB2D3] focus:bg-white transition-colors"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">
-                      {subLocationForm.address.length}/50
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-2">
+                <div className="pt-6">
                   <button 
                     onClick={() => {
                       if (!subLocationForm.name.trim()) return;

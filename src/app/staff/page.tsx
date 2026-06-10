@@ -689,15 +689,15 @@ export default function StaffHome() {
               >
                 閉じる
               </button>
-              <a 
-                href="https://example.com/pico-contact"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setIsContactModalOpen(false)}
+              <button 
+                onClick={() => {
+                  setIsContactModalOpen(false);
+                  window.location.href = "https://pico-app--studio-4866279312-20f76.asia-east1.hosted.app";
+                }}
                 className="flex-1 bg-[#3DB2D3] hover:bg-[#329ab8] text-white py-3.5 rounded-full font-bold text-[15px] shadow-[0_4px_12px_rgba(61,178,211,0.25)] transition-all flex items-center justify-center"
               >
                 OK（進む）
-              </a>
+              </button>
             </div>
           </div>
         </div>

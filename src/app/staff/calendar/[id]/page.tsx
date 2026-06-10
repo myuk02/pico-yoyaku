@@ -319,24 +319,33 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
       const dateObj = new Date(currentDate.getFullYear(), currentDate.getMonth(), day.date);
       
       const booking = parentBookings.find(b => {
-        const bDate = new Date(b.date);
+        if (!b || !b.date) return false;
+        let bDate;
+        if (typeof b.date.toDate === 'function') {
+          bDate = b.date.toDate();
+        } else if (typeof b.date === 'string' && b.date.includes('-')) {
+          const [y, m, d] = b.date.split('T')[0].split('-');
+          bDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+        } else {
+          bDate = new Date(b.date);
+        }
         return bDate.getFullYear() === dateObj.getFullYear() && 
                bDate.getMonth() === dateObj.getMonth() && 
                bDate.getDate() === dateObj.getDate();
       });
 
       if (booking) {
-        const pLoc = pickupLocations.find((l: any) => l.name === (booking as any).pickup.place) || pickupLocations[0];
-        const dLoc = dropoffLocations.find((l: any) => l.name === (booking as any).dropoff.place) || dropoffLocations[0];
+        const pLoc = pickupLocations.find((l: any) => l?.name === booking.pickup?.place) || pickupLocations[0];
+        const dLoc = dropoffLocations.find((l: any) => l?.name === booking.dropoff?.place) || dropoffLocations[0];
         
         return {
           ...day,
           type: "scheduled",
-          pickup: toFullWidth((booking as any).pickup.time || ""),
+          pickup: toFullWidth(booking.pickup?.time || ""),
           pickupPlaceId: pLoc?.id || null,
-          dropoff: toFullWidth((booking as any).dropoff.time || ""),
+          dropoff: toFullWidth(booking.dropoff?.time || ""),
           dropoffPlaceId: dLoc?.id || null,
-          status: (booking as any).status
+          status: booking.status
         };
       } else {
         if (day.type === "scheduled") {
@@ -377,43 +386,11 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
       };
       await setDoc(docRef, newBookingObj);
       
-      const isTodayDate = (d: Date) => {
-        const today = new Date();
-        return d.getDate() === today.getDate() &&
-               d.getMonth() === today.getMonth() &&
-               d.getFullYear() === today.getFullYear();
-      };
-      if (isTodayDate(targetDate)) {
-        try {
-          const childDocRef = doc(db, "children", id);
-          const todayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-          await setDoc(childDocRef, {
-            isTodayActive: true,
-            lastAttendanceDate: todayString
-          }, { merge: true });
-        } catch (err) {
-          console.error("本日スイッチの連動に失敗しました:", err);
-        }
-      }
+
     } else {
       await deleteDoc(docRef);
       
-      const isTodayDate = (d: Date) => {
-        const today = new Date();
-        return d.getDate() === today.getDate() &&
-               d.getMonth() === today.getMonth() &&
-               d.getFullYear() === today.getFullYear();
-      };
-      if (isTodayDate(targetDate)) {
-        try {
-          const childDocRef = doc(db, "children", id);
-          await setDoc(childDocRef, {
-            isTodayActive: false
-          }, { merge: true });
-        } catch (err) {
-          console.error("本日スイッチの連動（OFF）に失敗しました:", err);
-        }
-      }
+
     }
   };
 
