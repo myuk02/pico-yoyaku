@@ -42,6 +42,8 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
   });
 
   const [copySourceIndex, setCopySourceIndex] = useState<number | null>(null);
+  const [copySourceData, setCopySourceData] = useState<any>(null);
+  const [copySourceMonth, setCopySourceMonth] = useState<number | null>(null);
   const [selectedCopyIndices, setSelectedCopyIndices] = useState<number[]>([]);
 
   // Custom dropdown state and refs
@@ -570,6 +572,7 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
                       <Link
                         key={user.id}
                         href={`/staff/calendar/${user.id}`}
+                        replace
                         className={`block w-full px-5 py-3.5 text-left transition-colors ${
                           user.id === currentUser.id 
                             ? "bg-[#DDF2FF]/60 text-[#3DB2D3] font-black" 
@@ -743,6 +746,8 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setCopySourceIndex(i);
+                                  setCopySourceData(calendarDaysState[i]);
+                                  setCopySourceMonth(currentDate.getMonth());
                                   setSelectedCopyIndices([]);
                                   setActiveBadgeIndex(null);
                                 }}
@@ -802,6 +807,8 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
             className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
             onClick={() => {
               setCopySourceIndex(null);
+              setCopySourceData(null);
+              setCopySourceMonth(null);
               setSelectedCopyIndices([]);
             }}
           />
@@ -816,10 +823,12 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
 
             {/* Mini Calendar Header */}
             <div className="w-full flex items-center justify-between mb-3 px-2">
-              <span className="text-[16px] font-bold text-gray-800">2026年5月</span>
+              <span className="text-[16px] font-bold text-gray-800">
+                {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
+              </span>
               <div className="flex items-center gap-4 text-gray-800">
-                <button className="hover:opacity-70 active:scale-95 transition-transform"><ChevronLeft size={18} strokeWidth={2.5} /></button>
-                <button className="hover:opacity-70 active:scale-95 transition-transform"><ChevronRight size={18} strokeWidth={2.5} /></button>
+                <button onClick={handlePrevMonth} className="hover:opacity-70 active:scale-95 transition-transform"><ChevronLeft size={18} strokeWidth={2.5} /></button>
+                <button onClick={handleNextMonth} className="hover:opacity-70 active:scale-95 transition-transform"><ChevronRight size={18} strokeWidth={2.5} /></button>
               </div>
             </div>
 
@@ -843,7 +852,7 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
                     return <div key={i} className="aspect-square flex items-center justify-center"></div>;
                   }
                   
-                  const isSource = i === copySourceIndex;
+                  const isSource = i === copySourceIndex && copySourceMonth === currentDate.getMonth();
                   const isHoliday = cell.type === 'holiday';
                   const isSelected = selectedCopyIndices.includes(i);
                   const isSunday = i % 7 === 0;
@@ -880,7 +889,7 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
               <button 
                 onClick={() => {
                   if (selectedCopyIndices.length === 0) return;
-                  const sourceDay = calendarDaysState[copySourceIndex];
+                  const sourceDay = copySourceData || calendarDaysState[copySourceIndex];
                   const newDays = [...calendarDaysState];
                   selectedCopyIndices.forEach(idx => {
                     newDays[idx] = {
@@ -896,6 +905,8 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
                   });
                   setCalendarDaysState(newDays);
                   setCopySourceIndex(null);
+                  setCopySourceData(null);
+                  setCopySourceMonth(null);
                   setSelectedCopyIndices([]);
                 }}
                 className={`w-full py-3.5 rounded-full font-bold text-[15px] shadow-sm transition-all tracking-wide ${
@@ -910,6 +921,8 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
               <button 
                 onClick={() => {
                   setCopySourceIndex(null);
+                  setCopySourceData(null);
+                  setCopySourceMonth(null);
                   setSelectedCopyIndices([]);
                 }}
                 className="w-full block text-center text-[#FF6B8B] font-bold text-[14px] hover:opacity-80 transition-opacity"
@@ -943,7 +956,7 @@ export default function UserCalendarPage({ params }: { params: Promise<{ id: str
             {/* Date */}
             <div className="px-5 pb-4">
               <div className="text-[17px] font-bold text-gray-800 pb-3 border-b border-dashed border-gray-400">
-                2026年5月{calendarDaysState[editingIndex].date}日（{['日', '月', '火', '水', '木', '金', '土'][editingIndex % 7]}）
+                {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月{calendarDaysState[editingIndex].date}日（{['日', '月', '火', '水', '木', '金', '土'][editingIndex % 7]}）
               </div>
             </div>
             
